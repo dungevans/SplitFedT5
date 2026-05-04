@@ -1,0 +1,53 @@
+name: SplitFedLLM
+server:
+  global-round: 5           # Tăng số vòng huấn luyện lên nếu cần
+  clients:
+    - 1
+    - 1
+  cut-layers: 1             # Đối với T5 trong code của bạn, đây có thể hiểu là "vị trí cắt" giữa Encoder và Decoder
+  model-name: T5 
+  data-name: MTS-Dialog 
+  model:
+    GPT2:
+      n_block: 12
+    Llama:
+      n_block: 12
+    Bert:
+      n_block: 12
+    T5:                     # BỔ SUNG: Cần thiết để server khởi tạo total_block
+      n_block: 12           
+  parameters:
+    load: False             # Đổi thành False nếu bạn muốn train từ đầu (scratch)
+    save: True
+  validation: True
+  data-distribution:
+    non-iid: False
+    num-sample: 1200        # SỬA TẠI ĐÂY: Khớp với số dòng trong train.csv của bạn
+    num-label: 1            # MTS-Dialog là Seq2Seq, không cần nhiều label như phân loại
+    dirichlet:
+      alpha: 1
+    refresh-each-round: True
+  random-seed: 42           # Đổi seed nếu muốn kết quả khác đi
+
+rabbit:
+  address: 127.0.0.1
+  username: admin
+  password: admin
+  virtual-host: /
+
+log_path: .
+debug_mode: True
+
+learning:
+  learning-rate: 0.0001     # SỬA TẠI ĐÂY: T5 thường cần LR cao hơn một chút so với Llama (vd: 1e-4)
+  weight-decay: 0.01
+  batch-size: 2             # Giữ nguyên 2 để phù hợp GPU laptop Asus
+  control-count: 1
+  clip-grad-norm: 1.0       # Nên để 1.0 để tránh bùng nổ gradient (gradient exploding)
+
+fine-tune:
+  enable: True
+  name: LoRA
+  LoRA:
+    r: 8
+    alpha: 32               # SỬA TẠI ĐÂY: Thường alpha nên gấp 2-4 lần r
