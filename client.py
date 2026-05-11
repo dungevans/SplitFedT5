@@ -12,6 +12,7 @@ from src.RpcClient import RpcClient
 parser = argparse.ArgumentParser(description="Split learning framework")
 parser.add_argument('--layer_id', type=int, required=True, help='ID of layer, start from 1')
 parser.add_argument('--device', type=str, required=False, help='Device of client')
+parser.add_argument('--data_path', type=str, required=False, default='src/dataset/train.csv', help='Path to the local dataset for this client')
 
 args = parser.parse_args()
 
@@ -44,7 +45,7 @@ if __name__ == "__main__":
     src.Log.print_with_color("[>>>] Client sending registration message to server...", "red")
 
     data = {"action": "REGISTER", "client_id": client_id, "layer_id": args.layer_id,"message": "Hello from Client!"}
-    client = RpcClient(client_id, args.layer_id, channel, device)
+    client = RpcClient(client_id, args.layer_id, channel, device, args.data_path)
     client.send_to_server(data)
     client.wait_response()
 

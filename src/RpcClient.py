@@ -1,6 +1,7 @@
 import time
 import pickle
 import copy
+import uuid
 
 import src.Log
 from src.fine_tune.GPT2 import Ft_GPT2
@@ -14,14 +15,18 @@ from src.fine_tune.T5 import Ft_T5
 from src.model.T5 import SplitT5
 from peft import LoraConfig, TaskType, get_peft_model
 
+# Chia nhỏ thông tin gửi lên server thành các chunks 50MB
+CHUNK_SIZE = 50 * 1024 * 1024
+
 class RpcClient:
-    def __init__(self, client_id, layer_id, channel, device):
+    def __init__(self, client_id, layer_id, channel, device, data_path):
         self.client_id = client_id
         self.layer_id = layer_id
         self.channel = channel
         self.model_train = None
         self.train_loader = None
         self.device = device
+        self.data_path = data_path
 
         self.response = None
         self.label_count = None
@@ -177,12 +182,46 @@ class RpcClient:
         elif action == "STOP":
             return False
 
+
     def send_to_server(self, message):
         self.response = None
-
         self.channel.queue_declare('rpc_queue', durable=False)
-        self.channel.basic_publish(exchange='',
+
+        # Đóng gói thành bytes
+        data_bytes = pickle.dumps(message)
+        total_size = len(data_bytes)
+
+        if total_size < CHUNK_SIZE:
+            self.channel.basic_publish(exchange='',
                                    routing_key='rpc_queue',
                                    body=pickle.dumps(message))
+
+        else:
+            total_chunks = (total_size // CHUNK_SIZE) + (1 if total_size % CHUNK_SIZE != 0 else 0)
+
+            # Tạo ID duy nhất cho toàn bộ quá trình gửi
+            msg_id = str(uuid.uuid4())
+            src.Log.print_with_color(f"[*] Message size: {total_size/(1024*1024):.2f} MB. Sending {total_chunks} chunks", "yellow")
+
+            for i in range(total_chunks):
+                start = i * CHUNK_SIZE
+                end = min((i+1) * CHUNK_SIZE, total_size)
+                chunk_data = data_bytes[start:end]
+
+                payload = {
+                    'is_chunked': True,
+                    'msg_id': msg_id,
+                    'chunk_index': i,
+                    'total_chunks': total_chunks,
+                    'data': chunk_data
+                }
+                
+                self.channel.basic_publish(
+                    exchange='',
+                    routing_key='rpc_queue',
+                    body=pickle.dumps(payload)
+                )
+
+                print(f"  -> Sended chunk {i+1}/{total_chunks}")
 
         return self.response

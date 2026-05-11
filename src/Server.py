@@ -71,6 +71,9 @@ class Server:
         self.list_clients = []
         self.round_result = True
 
+        # receiving chunks of message
+        self.message_buffer = {}
+
         self.global_model_parameters = [[] for _ in range(len(self.total_clients))]
         self.global_client_sizes = [[] for _ in range(len(self.total_clients))]
         self.avg_state_dict = []
@@ -94,7 +97,33 @@ class Server:
             self.label_counts = np.full((self.total_clients[0], self.num_label), self.num_sample // self.num_label)
 
     def on_request(self, ch, method, props, body):
-        message = pickle.loads(body)
+        payload = pickle.loads(body)
+
+        if isinstance(payload, dict) and payload.get('is_chunked'):
+            msg_id = payload['msg_id']
+            chunk_index = payload['chunk_index']
+            total_chunks = payload['total_chunks']
+
+            if msg_id not in self.message_buffer:
+                self.message_buffer[msg_id] = []
+            
+            self.message_buffer[msg_id].append((chunk_index, payload['data']))
+            
+            if len(self.message_buffer[msg_id]) < total_chunks:
+                # Ack cho RabbitMQ biết mảnh đã được xử lý an toàn
+                ch.basic_ack(delivery_tag=method.delivery_tag)
+                return
+            # Sắp xếp đúng thức tự index
+            self.message_buffer[msg_id].sort(key=lambda x: x[0])
+            full_bytes = b''.join([chunk[1] for chunk in self.message_buffer[msg_id]])
+            del self.message_buffer[msg_id]
+
+            message = pickle.loads(full_bytes)
+
+        else:
+            message = payload
+            
+
         routing_key = props.reply_to
         action = message["action"]
         client_id = message["client_id"]
