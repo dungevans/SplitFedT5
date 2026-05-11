@@ -1,6 +1,7 @@
 import time
 import uuid
 import pickle
+import os
 
 import torch
 import torch.nn as nn
@@ -94,6 +95,10 @@ class Ft_T5:
 
                         intermediate_output, mask = model(input_ids=input_ids, attention_mask=attention_mask)
                         intermediate_output = intermediate_output.detach().requires_grad_(True)
+
+                        os.makedirs("extracted_client_states", exist_ok=True)
+                        extracted_tensor = intermediate_output.clone()
+                        torch.save(extracted_tensor, f"extracted_client_states/batch_{num_forward}.pt")
 
                         num_forward += 1
                         self.data_count += 1
